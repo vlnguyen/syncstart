@@ -203,6 +203,25 @@ describe('EventsGateway', () => {
       const machine = Object.values(lobby.machines)[0];
       expect(omit(machine, 'socketId')).toEqual(update1.machine);
 
+      const update1b: UpdateMachinePayload = {
+        machine: {
+          player1: {
+            playerId: 'P1',
+            profileName: 'teejusb',
+            screenName: 'ScreenGameplay',
+            ready: false,
+            score: 0.99,
+          },
+        },
+      };
+      await send<UpdateMachinePayload, ResponseStatusPayload>(client, {
+        event: 'updateMachine',
+        data: update1b,
+      });
+
+      expect(machine.player1).toBeDefined();
+      expect(machine.player2).toBeUndefined();
+
       // If one player goes back to SongSelect (I know, technically not possible for a single machine)
       // The songInfo/scores should persist
       const update2: UpdateMachinePayload = {
@@ -319,14 +338,28 @@ describe('EventsGateway', () => {
   });
 });
 
+// Broadcast-only events used to keep the lobby list in sync. These can
+// arrive interleaved with request/response messages, so `send` ignores them.
+const LOBBY_LIST_BROADCAST_EVENTS = new Set([
+  'lobbyAdded',
+  'lobbyUpdated',
+  'lobbyRemoved',
+]);
+
 function send<T, R>(
   client: WebSocket,
   message: EventMessage<T>,
 ): Promise<EventMessage<R>> {
   return new Promise((resolve) => {
-    client.on('message', (response: EventMessage) => {
-      resolve(JSON.parse(response.toString()));
-    });
+    const handler = (response: EventMessage) => {
+      const parsed = JSON.parse(response.toString());
+      if (LOBBY_LIST_BROADCAST_EVENTS.has(parsed.event)) {
+        return;
+      }
+      client.off('message', handler);
+      resolve(parsed);
+    };
+    client.on('message', handler);
     client.send(JSON.stringify(message));
   });
 }

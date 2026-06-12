@@ -20,6 +20,7 @@ import {
   getPlayerCountForLobby,
   RETAINED_PLAYER_KEYS,
   inSongSelect,
+  isInScreenEvaluationStage,
   responseStatusFailure,
 } from './utils';
 import {
@@ -38,12 +39,9 @@ import {
 import { merge, pick } from 'lodash';
 
 import { ClientService } from '../clients/client.service';
+import { MatchLogService } from '../MatchLog/MatchLog.service';
 
-@WebSocketGateway({
-  cors: {
-    origin: '*',
-  },
-})
+@WebSocketGateway()
 export class EventsGateway
   implements OnGatewayConnection, OnGatewayDisconnect, OnApplicationShutdown
 {
@@ -59,11 +57,14 @@ export class EventsGateway
   /** Cleanup interval in milliseconds */
   private readonly CLEANUP_INTERVAL = 30000; // 30 seconds
   /** Lobby inactivity timeout in milliseconds */
-  private readonly LOBBY_INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+  private readonly LOBBY_INACTIVITY_TIMEOUT = 120 * 60 * 1000; // 120 minutes
 
   private cleanupIntervalId: NodeJS.Timeout | null = null;
 
-  constructor(private readonly clients: ClientService) {}
+  constructor(
+    private readonly clients: ClientService,
+    private readonly matchLog: MatchLogService,
+  ) {}
 
   afterInit() {
     this.handlers = {
@@ -82,15 +83,29 @@ export class EventsGateway
   }
 
   /**
-   * Updates a lobby's lastUpdate timestamp to track activity.
-   * This is used for inactivity-based cleanup of zombie lobbies.
+   * Updates a lobby's lastUpdate timestamp to track activity, and notifies
+   * all clients so they can update their lobby list in realtime.
    * @param code The lobby code to update
    */
   private updateLobbyActivity(code: LobbyCode): void {
     const lobby = LOBBYMAN.lobbies[code];
     if (lobby) {
       lobby.lastUpdate = Date.now();
+      this.clients.sendAll({ event: 'lobbyUpdated', data: lobby });
     }
+  }
+
+  /** Notifies all clients that a new lobby was created. */
+  private broadcastLobbyAdded(code: LobbyCode): void {
+    const lobby = LOBBYMAN.lobbies[code];
+    if (lobby) {
+      this.clients.sendAll({ event: 'lobbyAdded', data: lobby });
+    }
+  }
+
+  /** Notifies all clients that a lobby was removed. */
+  private broadcastLobbyRemoved(code: LobbyCode): void {
+    this.clients.sendAll({ event: 'lobbyRemoved', data: { code } });
   }
 
   /**
@@ -155,6 +170,7 @@ export class EventsGateway
         // Delete the lobby and its room
         delete ROOMMAN.rooms[code];
         delete LOBBYMAN.lobbies[code];
+        this.broadcastLobbyRemoved(code);
       }
     }
   }
@@ -220,7 +236,11 @@ export class EventsGateway
     }
 
     if (socketId in LOBBYMAN.spectatorConnections) {
-      disconnectSpectator(socketId);
+      const oldCode = disconnectSpectator(socketId);
+      if (oldCode) {
+        this.updateLobbyActivity(oldCode);
+        this.broadcastLobbyState(oldCode);
+      }
     }
   }
 
@@ -247,7 +267,11 @@ export class EventsGateway
     { machine, password }: CreateLobbyData,
   ): Promise<undefined> {
     if (socketId in LOBBYMAN.spectatorConnections) {
-      disconnectSpectator(socketId);
+      const oldCode = disconnectSpectator(socketId);
+      if (oldCode) {
+        this.updateLobbyActivity(oldCode);
+        this.broadcastLobbyState(oldCode);
+      }
     }
 
     if (socketId in LOBBYMAN.machineConnections) {
@@ -276,6 +300,7 @@ export class EventsGateway
 
     ROOMMAN.join(socketId, code);
     LOBBYMAN.machineConnections[socketId] = code;
+    this.broadcastLobbyAdded(code);
     this.updateLobbyActivity(code);
 
     this.broadcastLobbyState(code);
@@ -309,7 +334,11 @@ export class EventsGateway
     }
 
     if (socketId in LOBBYMAN.spectatorConnections) {
-      disconnectSpectator(socketId);
+      const oldCode = disconnectSpectator(socketId);
+      if (oldCode) {
+        this.updateLobbyActivity(oldCode);
+        this.broadcastLobbyState(oldCode);
+      }
     }
 
     if (socketId in LOBBYMAN.machineConnections) {
@@ -364,10 +393,27 @@ export class EventsGateway
       return responseStatusFailure('updateMachine', 'Lobby not found');
     }
 
-    // Merge the incoming machine data with the respective lobby's machine
+    // Merge the incoming machine data with the existing machine state,
+    // but remove players that are no longer present in the incoming payload.
     const playersInSongSelectBefore = inSongSelect(lobby);
-    merge(lobby.machines[socketId], machine);
+    const isInScreenEvaluationStageBefore = isInScreenEvaluationStage(lobby);
+    const existingMachine = lobby.machines[socketId];
+    if (machine.player1 === undefined) {
+      delete existingMachine.player1;
+    }
+    if (machine.player2 === undefined) {
+      delete existingMachine.player2;
+    }
+    merge(existingMachine, machine);
     const playersInSongSelectAfter = inSongSelect(lobby);
+    const isInScreenEvaluationStageAfter = isInScreenEvaluationStage(lobby);
+
+    // If all players have just reached the evaluation/results screen,
+    // log the completed match.
+    if (!isInScreenEvaluationStageBefore && isInScreenEvaluationStageAfter) {
+      const match = this.matchLog.logMatch(lobby);
+      this.clients.sendAll({ event: 'matchLogged', data: match });
+    }
 
     // If all players have transitioned back to song select,
     // Ensure the scores and currently-selected song get reset
@@ -473,7 +519,11 @@ export class EventsGateway
 
     if (socketId in LOBBYMAN.spectatorConnections) {
       // A spectator can only spectate one lobby at a time.
-      disconnectSpectator(socketId);
+      const oldCode = disconnectSpectator(socketId);
+      if (oldCode && oldCode !== code.toUpperCase()) {
+        this.updateLobbyActivity(oldCode);
+        this.broadcastLobbyState(oldCode);
+      }
     }
     const lobby = LOBBYMAN.lobbies[code.toUpperCase()];
     lobby.spectators[socketId] = {
@@ -515,19 +565,18 @@ export class EventsGateway
   private getLobbyState(
     code: LobbyCode,
   ): EventMessage<LobbyStatePayload> | null {
-    // Send back the machine state with the socket ids omitted
-    const players: Player[] = [];
+    const players: Array<Player & { socketId?: SocketId }> = [];
     const lobby = LOBBYMAN.lobbies[code];
     if (lobby === undefined) {
       return null;
     }
     Object.values(lobby.machines).forEach((machine) => {
-      const { player1, player2 } = machine;
+      const { player1, player2, socketId } = machine;
       if (player1) {
-        players.push(player1);
+        players.push({ ...player1, socketId });
       }
       if (player2) {
-        players.push(player2);
+        players.push({ ...player2, socketId });
       }
     });
     const { songInfo } = lobby;
@@ -595,12 +644,14 @@ export class EventsGateway
       }
       delete ROOMMAN.rooms[code];
       delete LOBBYMAN.lobbies[code];
+      this.broadcastLobbyRemoved(code);
     } else {
       // When a client disconnects, notify other clients
       const stateMessage = this.getLobbyState(code);
       if (stateMessage) {
         this.clients.sendLobby(stateMessage, code);
       }
+      this.updateLobbyActivity(code);
     }
     return true;
   }

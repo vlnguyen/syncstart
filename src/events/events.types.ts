@@ -1,12 +1,15 @@
 import {
+  Lobby,
   LobbyCode,
   LobbyInfo,
   Machine,
   Player,
   PlayerId,
+  SocketId,
   SongInfo,
   Spectator,
 } from '../types/models.types';
+import { Match } from '../MatchLog/MatchLog.types';
 
 export type EventType =
   | 'createLobby'
@@ -26,7 +29,11 @@ export type EventType =
   | 'lobbyState'
   | 'selectSong'
   | 'responseStatus'
-  | 'startSong';
+  | 'startSong'
+  | 'matchLogged'
+  | 'lobbyAdded'
+  | 'lobbyUpdated'
+  | 'lobbyRemoved';
 
 export type EventData =
   | CreateLobbyData
@@ -42,7 +49,11 @@ export type EventData =
   | ReadyUpResultPayload
   | LobbyStatePayload
   | SelectSongPayload
-  | StartSongPayload;
+  | StartSongPayload
+  | MatchLoggedPayload
+  | LobbyAddedPayload
+  | LobbyUpdatedPayload
+  | LobbyRemovedPayload;
 
 export interface EventMessage<T = EventData> {
   event: EventType;
@@ -116,7 +127,7 @@ export interface ClientDisconnectedPayload {
 }
 
 export interface LobbyStatePayload {
-  players: Array<Player>;
+  players: Array<Player & { socketId?: SocketId }>;
   spectators: Array<string>;
   code: LobbyCode;
   songInfo?: SongInfo;
@@ -124,4 +135,14 @@ export interface LobbyStatePayload {
 
 export interface StartSongPayload {
   start: boolean;
+}
+
+export type MatchLoggedPayload = Match;
+
+export type LobbyAddedPayload = Lobby;
+
+export type LobbyUpdatedPayload = Lobby;
+
+export interface LobbyRemovedPayload {
+  code: LobbyCode;
 }
