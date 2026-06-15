@@ -1,4 +1,5 @@
 import { Injectable, OnApplicationShutdown } from '@nestjs/common';
+import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 import Database = require('better-sqlite3');
@@ -19,9 +20,12 @@ export class MatchLogService implements OnApplicationShutdown {
   private readonly db: Database.Database;
 
   constructor() {
-    const dbPath =
+    let dbPath =
       process.env.SQLITE3_DB_PATH ||
       path.join(__dirname, '../../data/matches.db');
+    if (dbPath.startsWith('~')) {
+      dbPath = path.join(os.homedir(), dbPath.slice(1));
+    }
     const dataDir = path.dirname(dbPath);
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
