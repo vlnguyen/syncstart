@@ -31,6 +31,7 @@ export type EventType =
   | 'responseStatus'
   | 'startSong'
   | 'matchLogged'
+  | 'matchUpdated'
   | 'lobbyAdded'
   | 'lobbyUpdated'
   | 'lobbyRemoved';
@@ -138,6 +139,8 @@ export interface StartSongPayload {
 }
 
 export type MatchLoggedPayload = Match;
+
+export type MatchUpdatedPayload = Match;
 
 export type LobbyAddedPayload = Lobby;
 

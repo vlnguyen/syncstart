@@ -5,6 +5,7 @@ export interface MatchRow {
   id: string;
   dateAdded: number;
   lobbyCode: string;
+  label: string | null;
   songTitle: string | null;
   songArtist: string | null;
   songPath: string | null;
@@ -48,4 +49,9 @@ export type PlayerScore = Omit<ScoreRow, 'matchId'>;
 /** A completed match, made up of one score per player. */
 export interface Match extends MatchRow {
   scores: PlayerScore[];
+}
+
+/** Fields that can be updated on an existing match. */
+export interface UpdateMatchBody {
+  label?: string | null;
 }
