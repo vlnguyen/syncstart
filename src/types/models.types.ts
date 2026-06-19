@@ -83,6 +83,10 @@ export interface Lobby {
 
   songInfo?: SongInfo;
 
+  // Set to true once the match has been logged for the current song session;
+  // prevents duplicate logs if a machine disconnects while on the eval screen.
+  matchLogged?: boolean;
+
   // Timestamp of the last activity in this lobby (for inactivity cleanup)
   lastUpdate: number;
 }
