@@ -84,6 +84,13 @@ export class MatchLogService implements OnApplicationShutdown {
       ),
     );
 
+    if (!lobby.songInfo?.title) {
+      throw new Error('Cannot log a match without a song title.');
+    }
+    if (players.length === 0) {
+      throw new Error('Cannot log a match with no players.');
+    }
+
     const matchId = uuidv4();
     const dateAdded = Date.now();
     const chartTotals = players.find((player) => player.judgments)?.judgments;

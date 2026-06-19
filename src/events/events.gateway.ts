@@ -417,8 +417,8 @@ export class EventsGateway
       isInScreenEvaluationStageAfter &&
       !lobby.matchLogged
     ) {
-      lobby.matchLogged = true;
       const match = this.matchLog.logMatch(lobby);
+      lobby.matchLogged = true;
       this.clients.sendAll({ event: 'matchLogged', data: match });
     }
 
