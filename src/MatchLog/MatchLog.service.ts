@@ -13,6 +13,7 @@ import {
   NewScoreRow,
   PlayerScore,
   ScoreRow,
+  UpdateMatchBody,
 } from './MatchLog.types';
 
 @Injectable()
@@ -164,6 +165,33 @@ export class MatchLogService implements OnApplicationShutdown {
     return {
       ...matchRow,
       scores,
+    };
+  }
+
+  updateMatch(id: string, updates: UpdateMatchBody): Match | undefined {
+    const setClauses = (Object.keys(updates) as (keyof UpdateMatchBody)[])
+      .map((key) => `${key} = @${key}`)
+      .join(', ');
+    if (!setClauses) return this.getMatch(id);
+    this.db
+      .prepare(`UPDATE matches SET ${setClauses} WHERE id = @id`)
+      .run({ ...updates, id });
+    return this.getMatch(id);
+  }
+
+  private getMatch(id: string): Match | undefined {
+    const matchRow = this.db
+      .prepare<{ id: string }, MatchRow>('SELECT * FROM matches WHERE id = @id')
+      .get({ id });
+    if (!matchRow) return undefined;
+    const scoreRows = this.db
+      .prepare<{ matchId: string }, ScoreRow>(
+        'SELECT * FROM scores WHERE matchId = @matchId',
+      )
+      .all({ matchId: id });
+    return {
+      ...matchRow,
+      scores: scoreRows.map((row) => omit(row, ['matchId'])),
     };
   }
 

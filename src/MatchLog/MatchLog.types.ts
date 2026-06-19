@@ -50,3 +50,8 @@ export type PlayerScore = Omit<ScoreRow, 'matchId'>;
 export interface Match extends MatchRow {
   scores: PlayerScore[];
 }
+
+/** Fields that can be updated on an existing match. */
+export interface UpdateMatchBody {
+  label?: string | null;
+}
