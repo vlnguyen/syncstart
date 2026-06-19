@@ -409,8 +409,15 @@ export class EventsGateway
     const isInScreenEvaluationStageAfter = isInScreenEvaluationStage(lobby);
 
     // If all players have just reached the evaluation/results screen,
-    // log the completed match.
-    if (!isInScreenEvaluationStageBefore && isInScreenEvaluationStageAfter) {
+    // log the completed match. The matchLogged guard prevents a duplicate log
+    // if a machine disconnects while the lobby is already on the eval screen
+    // (which would otherwise make the lobby appear to re-enter eval stage).
+    if (
+      !isInScreenEvaluationStageBefore &&
+      isInScreenEvaluationStageAfter &&
+      !lobby.matchLogged
+    ) {
+      lobby.matchLogged = true;
       const match = this.matchLog.logMatch(lobby);
       this.clients.sendAll({ event: 'matchLogged', data: match });
     }
@@ -419,6 +426,7 @@ export class EventsGateway
     // Ensure the scores and currently-selected song get reset
     if (!playersInSongSelectBefore && playersInSongSelectAfter) {
       lobby.songInfo = undefined;
+      lobby.matchLogged = false;
       Object.values(lobby.machines).forEach((machine) => {
         // Only retain relevant fields
         if (machine.player1) {
