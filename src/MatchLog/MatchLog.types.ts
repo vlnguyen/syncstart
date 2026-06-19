@@ -5,6 +5,7 @@ export interface MatchRow {
   id: string;
   dateAdded: number;
   lobbyCode: string;
+  label: string | null;
   songTitle: string | null;
   songArtist: string | null;
   songPath: string | null;

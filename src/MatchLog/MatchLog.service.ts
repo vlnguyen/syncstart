@@ -37,6 +37,7 @@ export class MatchLogService implements OnApplicationShutdown {
         id TEXT PRIMARY KEY,
         dateAdded INTEGER NOT NULL,
         lobbyCode TEXT NOT NULL,
+        label TEXT,
         songTitle TEXT,
         songArtist TEXT,
         songPath TEXT,
@@ -90,6 +91,7 @@ export class MatchLogService implements OnApplicationShutdown {
       id: matchId,
       dateAdded,
       lobbyCode: lobby.code,
+      label: null,
       songTitle: lobby.songInfo?.title ?? null,
       songArtist: lobby.songInfo?.artist ?? null,
       songPath: lobby.songInfo?.songPath ?? null,
@@ -102,10 +104,10 @@ export class MatchLogService implements OnApplicationShutdown {
     this.db
       .prepare(
         `INSERT INTO matches
-          (id, dateAdded, lobbyCode, songTitle, songArtist, songPath,
+          (id, dateAdded, lobbyCode, label, songTitle, songArtist, songPath,
            totalSteps, totalHolds, totalRolls, totalMines)
          VALUES
-          (@id, @dateAdded, @lobbyCode, @songTitle, @songArtist, @songPath,
+          (@id, @dateAdded, @lobbyCode, @label, @songTitle, @songArtist, @songPath,
            @totalSteps, @totalHolds, @totalRolls, @totalMines)`,
       )
       .run(matchRow);
