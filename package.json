@@ -13,6 +13,7 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
+    "start:local": "node --env-file=.env build/src/main.js",
     "lint": "gts lint",
     "test": "jest",
     "test:watch": "jest --watch",
